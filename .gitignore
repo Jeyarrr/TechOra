@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Vite build output and local caches
+frontend/dist/
+node_modules/.vite/
+
+# Local secrets and environment-specific configuration
+.env
+.env.local
+
+# Logs and operating-system files
+*.log
+.DS_Store
+Thumbs.db
