@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d5f04a"/><stop offset="1" stop-color="#9db4a7"/></linearGradient></defs>
+  <rect width="900" height="900" fill="#dbe3dd"/><circle cx="690" cy="210" r="210" fill="url(#g)"/>
+  <rect x="190" y="190" width="430" height="500" rx="42" fill="#152421"/>
+  <rect x="215" y="238" width="380" height="355" rx="12" fill="#f6f5ef"/>
+  <circle cx="405" cy="642" r="19" fill="#d5f04a"/>
+  <path d="M285 350h240M285 420h175" stroke="#152421" stroke-width="22" stroke-linecap="round"/>
+  <text x="450" y="770" text-anchor="middle" fill="#152421" font-family="Arial,sans-serif" font-size="42" font-weight="700">TECHORA</text>
+</svg>

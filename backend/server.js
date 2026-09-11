@@ -8,7 +8,10 @@ const { getPool } = require('./db');
 const app = express();
 const orders = [];
 const users = [];
-app.use(express.json());
+const uploadsDirectory = path.join(__dirname, '..', 'uploads');
+fs.mkdirSync(uploadsDirectory, { recursive: true });
+app.use(express.json({ limit: '6mb' }));
+app.use('/uploads', express.static(uploadsDirectory));
 const clientBuild = path.join(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(clientBuild)) app.use(express.static(clientBuild));
 
@@ -140,6 +143,40 @@ app.get('/api/products/:id', async (req, res) => {
   res.json(product);
 });
 
+app.get('/api/products/:id/reviews', async (req, res) => {
+  const db = getPool();
+  if (!db) return res.json([]);
+  try {
+    const result = await db.query(`SELECT r.id, r.rating, r.comment, r.created_at AS "createdAt", u.first_name || ' ' || LEFT(u.last_name, 1) || '.' AS customer
+      FROM reviews r JOIN users u ON u.id = r.customer_id WHERE r.product_id = $1 ORDER BY r.created_at DESC`, [req.params.id]);
+    res.json(result.rows);
+  } catch { res.status(500).json({ message: 'Could not load reviews.' }); }
+});
+
+app.post('/api/products/:id/reviews', async (req, res) => {
+  const { userId, rating, comment } = req.body || {};
+  const score = Number(rating);
+  if (!userId || !Number.isInteger(score) || score < 1 || score > 5 || String(comment || '').trim().length < 3) return res.status(422).json({ message: 'Provide a rating and a review of at least 3 characters.' });
+  const db = getPool();
+  if (!db) return res.status(503).json({ message: 'Reviews require the database connection.' });
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const purchased = await client.query(`SELECT o.id FROM orders o JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.customer_id = $1 AND oi.product_id = $2 AND o.status = 'DELIVERED'
+      AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id AND r.product_id = $2 AND r.customer_id = $1)
+      ORDER BY o.created_at DESC LIMIT 1`, [userId, req.params.id]);
+    if (!purchased.rows[0]) throw Object.assign(new Error('You can review this product after a delivered order.'), { status: 403 });
+    await client.query('INSERT INTO reviews (product_id, customer_id, order_id, rating, comment) VALUES ($1, $2, $3, $4, $5)', [req.params.id, userId, purchased.rows[0].id, score, String(comment).trim()]);
+    await client.query(`UPDATE products SET rating = (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE product_id = $1), review_count = (SELECT COUNT(*) FROM reviews WHERE product_id = $1), updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, message: 'Thank you for your review.' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(error.status || 500).json({ message: error.message || 'Could not save your review.' });
+  } finally { client.release(); }
+});
+
 app.post('/api/orders', async (req, res) => {
   const { userId, items } = req.body || {};
   if (!userId || !Array.isArray(items) || !items.length) return res.status(400).json({ error: 'A signed-in customer and cart items are required.' });
@@ -215,14 +252,28 @@ app.get('/api/admin/dashboard', async (req, res) => {
   try {
     const db = await requireAdmin(req.query.userId);
     if (!db) return res.status(403).json({ message: 'Admin access is required.' });
-    const [sales, ordersResult, customers, lowStock, latestOrders] = await Promise.all([
+    const [sales, ordersResult, customers, lowStock, latestOrders, popularProducts, topOrders, topCustomers] = await Promise.all([
       db.query("SELECT COALESCE(SUM(total_pesos), 0)::int AS revenue FROM orders WHERE status <> 'CANCELLED'"),
       db.query('SELECT COUNT(*)::int AS count FROM orders'),
       db.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'CUSTOMER'"),
       db.query('SELECT id, name, stock_quantity AS stock FROM products WHERE stock_quantity <= 5 ORDER BY stock_quantity ASC'),
-      db.query('SELECT order_number AS id, status, total_pesos AS total, created_at AS "createdAt" FROM orders ORDER BY created_at DESC LIMIT 6')
+      db.query('SELECT order_number AS id, status, total_pesos AS total, created_at AS "createdAt" FROM orders ORDER BY created_at DESC LIMIT 6'),
+      db.query(`SELECT p.id, p.name, p.category, p.image_url AS image, p.price_pesos AS price,
+        COALESCE(SUM(oi.quantity) FILTER (WHERE o.id IS NOT NULL), 0)::int AS "unitsSold", (COUNT(DISTINCT oi.order_id) FILTER (WHERE o.id IS NOT NULL))::int AS "orderCount"
+        FROM products p LEFT JOIN order_items oi ON oi.product_id = p.id
+        LEFT JOIN orders o ON o.id = oi.order_id AND o.status <> 'CANCELLED'
+        GROUP BY p.id ORDER BY "unitsSold" DESC, p.rating DESC, p.name ASC LIMIT 5`),
+      db.query(`SELECT o.order_number AS id, o.total_pesos AS total, o.status, o.created_at AS "createdAt",
+        u.first_name || ' ' || u.last_name AS customer, COALESCE(SUM(oi.quantity), 0)::int AS "itemCount"
+        FROM orders o JOIN users u ON u.id = o.customer_id LEFT JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.status <> 'CANCELLED' GROUP BY o.id, u.first_name, u.last_name
+        ORDER BY o.total_pesos DESC, o.created_at DESC LIMIT 5`),
+      db.query(`SELECT u.id, u.first_name || ' ' || u.last_name AS name, u.email,
+        COUNT(o.id)::int AS "orderCount", COALESCE(SUM(o.total_pesos), 0)::int AS "totalSpent"
+        FROM users u LEFT JOIN orders o ON o.customer_id = u.id AND o.status <> 'CANCELLED'
+        WHERE u.role = 'CUSTOMER' GROUP BY u.id ORDER BY "orderCount" DESC, "totalSpent" DESC, u.created_at DESC LIMIT 5`)
     ]);
-    res.json({ revenue: sales.rows[0].revenue, orders: ordersResult.rows[0].count, customers: customers.rows[0].count, lowStock: lowStock.rows, latestOrders: latestOrders.rows });
+    res.json({ revenue: sales.rows[0].revenue, orders: ordersResult.rows[0].count, customers: customers.rows[0].count, lowStock: lowStock.rows, latestOrders: latestOrders.rows, popularProducts: popularProducts.rows, topOrders: topOrders.rows, topCustomers: topCustomers.rows });
   } catch { res.status(500).json({ message: 'Could not load admin analytics.' }); }
 });
 
@@ -235,17 +286,64 @@ app.get('/api/admin/products', async (req, res) => {
   } catch { res.status(500).json({ message: 'Could not load products.' }); }
 });
 
+app.post('/api/admin/products', async (req, res) => {
+  const { userId, name, category, price, stock, image, imageData, description } = req.body || {};
+  try {
+    const db = await requireAdmin(userId);
+    if (!db) return res.status(403).json({ message: 'Admin access is required.' });
+    if (![name, category].every(Boolean) || !(image || imageData) || !Number.isInteger(Number(price)) || Number(price) < 0 || !Number.isInteger(Number(stock)) || Number(stock) < 0) return res.status(422).json({ message: 'Name, category, product image, whole-peso price, and stock are required.' });
+    const id = `${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now().toString().slice(-5)}`;
+    let imagePath = image;
+    if (imageData) {
+      const match = String(imageData).match(/^data:image\/(jpeg|png|webp|gif);base64,([A-Za-z0-9+/=]+)$/);
+      if (!match) return res.status(422).json({ message: 'Upload a JPG, PNG, WebP, or GIF image.' });
+      const extension = match[1] === 'jpeg' ? 'jpg' : match[1]; const fileName = `${crypto.randomUUID()}.${extension}`;
+      fs.writeFileSync(path.join(uploadsDirectory, fileName), Buffer.from(match[2], 'base64'));
+      imagePath = `/uploads/${fileName}`;
+    }
+    const result = await db.query(`INSERT INTO products (id, name, category, price_pesos, stock_quantity, image_url, description, rating, review_count)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0)
+      RETURNING id, name, category, price_pesos AS price, stock_quantity AS stock, rating, badge, image_url AS image`, [id, String(name).trim(), String(category).trim(), Number(price), Number(stock), String(imagePath).trim(), String(description || `A new ${name} added to the Techora catalog.`).trim()]);
+    res.status(201).json({ success: true, product: result.rows[0] });
+  } catch { res.status(500).json({ message: 'Could not add the product.' }); }
+});
+
 app.patch('/api/admin/products/:id', async (req, res) => {
-  const { userId, stock, price } = req.body || {};
+  const { userId, stock, price, name, category, description, imageData } = req.body || {};
   try {
     const db = await requireAdmin(userId);
     if (!db) return res.status(403).json({ message: 'Admin access is required.' });
     if (stock !== undefined && (!Number.isInteger(Number(stock)) || Number(stock) < 0)) return res.status(422).json({ message: 'Stock must be a whole number of zero or more.' });
     if (price !== undefined && (!Number.isInteger(Number(price)) || Number(price) < 0)) return res.status(422).json({ message: 'Price must be a whole peso amount.' });
-    const result = await db.query('UPDATE products SET stock_quantity = COALESCE($1, stock_quantity), price_pesos = COALESCE($2, price_pesos), updated_at = NOW() WHERE id = $3 RETURNING id, name, category, price_pesos AS price, stock_quantity AS stock, rating, badge, image_url AS image', [stock === undefined ? null : Number(stock), price === undefined ? null : Number(price), req.params.id]);
+    let imagePath = null;
+    if (imageData) { const match = String(imageData).match(/^data:image\/(jpeg|png|webp|gif);base64,([A-Za-z0-9+/=]+)$/); if (!match) return res.status(422).json({ message: 'Upload a JPG, PNG, WebP, or GIF image.' }); const extension = match[1] === 'jpeg' ? 'jpg' : match[1]; const fileName = `${crypto.randomUUID()}.${extension}`; fs.writeFileSync(path.join(uploadsDirectory, fileName), Buffer.from(match[2], 'base64')); imagePath = `/uploads/${fileName}`; }
+    const result = await db.query('UPDATE products SET stock_quantity = COALESCE($1, stock_quantity), price_pesos = COALESCE($2, price_pesos), name = COALESCE($3, name), category = COALESCE($4, category), description = COALESCE($5, description), image_url = COALESCE($6, image_url), updated_at = NOW() WHERE id = $7 RETURNING id, name, category, price_pesos AS price, stock_quantity AS stock, rating, badge, image_url AS image', [stock === undefined ? null : Number(stock), price === undefined ? null : Number(price), name || null, category || null, description || null, imagePath, req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ message: 'Product not found.' });
     res.json({ success: true, product: result.rows[0] });
   } catch { res.status(500).json({ message: 'Could not update this product.' }); }
+});
+
+app.delete('/api/admin/products/:id', async (req, res) => {
+  const { userId, password } = req.body || {};
+  try {
+    const db = await requireAdmin(userId);
+    if (!db) return res.status(403).json({ message: 'Admin access is required.' });
+    if (!password) return res.status(422).json({ message: 'Enter your admin password to permanently delete this product.' });
+
+    const account = await db.query('SELECT password_hash, password_salt FROM users WHERE id = $1 AND role = \'ADMIN\'', [userId]);
+    if (!account.rows[0]) return res.status(403).json({ message: 'Admin account was not found.' });
+    const candidate = passwordHash(String(password), account.rows[0].password_salt).hash;
+    if (!crypto.timingSafeEqual(Buffer.from(candidate, 'hex'), Buffer.from(account.rows[0].password_hash, 'hex'))) return res.status(401).json({ message: 'Incorrect admin password. Product was not deleted.' });
+
+    const deleted = await db.query('DELETE FROM products WHERE id = $1 RETURNING id, name, image_url', [req.params.id]);
+    if (!deleted.rows[0]) return res.status(404).json({ message: 'Product not found.' });
+    const imagePath = deleted.rows[0].image_url;
+    if (imagePath?.startsWith('/uploads/')) {
+      const filePath = path.join(uploadsDirectory, path.basename(imagePath));
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+    res.json({ success: true, message: `${deleted.rows[0].name} was permanently deleted.` });
+  } catch { res.status(500).json({ message: 'Could not delete this product.' }); }
 });
 
 app.get('/api/admin/orders', async (req, res) => {

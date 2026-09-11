@@ -61,7 +61,20 @@ CREATE TABLE order_items (
   unit_price_pesos INTEGER NOT NULL CHECK (unit_price_pesos >= 0)
 );
 
+CREATE TABLE reviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id VARCHAR(80) NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment TEXT NOT NULL CHECK (char_length(comment) BETWEEN 3 AND 1000),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (product_id, customer_id, order_id)
+);
+
 CREATE INDEX addresses_user_id_idx ON addresses(user_id);
 CREATE INDEX products_category_idx ON products(category);
 CREATE INDEX orders_customer_id_idx ON orders(customer_id);
 CREATE INDEX order_items_order_id_idx ON order_items(order_id);
+CREATE INDEX reviews_product_id_idx ON reviews(product_id);
