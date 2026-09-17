@@ -9,6 +9,24 @@ node_modules/.vite/
 # Local secrets and environment-specific configuration
 .env
 .env.local
+.env.*
+
+# Private keys, certificates, and service-account credentials
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+secrets/
+private/
+
+# Local database files, backups, and admin-uploaded files
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+uploads/
 
 # Logs and operating-system files
 *.log
