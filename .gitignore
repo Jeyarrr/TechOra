@@ -5,6 +5,8 @@ frontend/node_modules/
 # Vite build output and local caches
 frontend/dist/
 node_modules/.vite/
+.cache/
+test-results/
 
 # Local secrets and environment-specific configuration
 .env
