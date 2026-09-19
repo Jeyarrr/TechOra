@@ -4,11 +4,11 @@ const fs = require('fs');
 const crypto = require('crypto');
 const products = require('./products');
 const { getPool } = require('./db');
+const { uploadsDirectory, saveProductImage, removeProductImage } = require('./images');
 
 const app = express();
 const orders = [];
 const users = [];
-const uploadsDirectory = path.join(__dirname, '..', 'uploads');
 fs.mkdirSync(uploadsDirectory, { recursive: true });
 app.use(express.json({ limit: '6mb' }));
 app.use('/uploads', express.static(uploadsDirectory));
@@ -294,18 +294,12 @@ app.post('/api/admin/products', async (req, res) => {
     if (![name, category].every(Boolean) || !(image || imageData) || !Number.isInteger(Number(price)) || Number(price) < 0 || !Number.isInteger(Number(stock)) || Number(stock) < 0) return res.status(422).json({ message: 'Name, category, product image, whole-peso price, and stock are required.' });
     const id = `${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now().toString().slice(-5)}`;
     let imagePath = image;
-    if (imageData) {
-      const match = String(imageData).match(/^data:image\/(jpeg|png|webp|gif);base64,([A-Za-z0-9+/=]+)$/);
-      if (!match) return res.status(422).json({ message: 'Upload a JPG, PNG, WebP, or GIF image.' });
-      const extension = match[1] === 'jpeg' ? 'jpg' : match[1]; const fileName = `${crypto.randomUUID()}.${extension}`;
-      fs.writeFileSync(path.join(uploadsDirectory, fileName), Buffer.from(match[2], 'base64'));
-      imagePath = `/uploads/${fileName}`;
-    }
+    if (imageData) imagePath = await saveProductImage(imageData);
     const result = await db.query(`INSERT INTO products (id, name, category, price_pesos, stock_quantity, image_url, description, rating, review_count)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0)
       RETURNING id, name, category, price_pesos AS price, stock_quantity AS stock, rating, badge, image_url AS image`, [id, String(name).trim(), String(category).trim(), Number(price), Number(stock), String(imagePath).trim(), String(description || `A new ${name} added to the Techora catalog.`).trim()]);
     res.status(201).json({ success: true, product: result.rows[0] });
-  } catch { res.status(500).json({ message: 'Could not add the product.' }); }
+  } catch (error) { res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not add the product.' }); }
 });
 
 app.patch('/api/admin/products/:id', async (req, res) => {
@@ -316,11 +310,11 @@ app.patch('/api/admin/products/:id', async (req, res) => {
     if (stock !== undefined && (!Number.isInteger(Number(stock)) || Number(stock) < 0)) return res.status(422).json({ message: 'Stock must be a whole number of zero or more.' });
     if (price !== undefined && (!Number.isInteger(Number(price)) || Number(price) < 0)) return res.status(422).json({ message: 'Price must be a whole peso amount.' });
     let imagePath = null;
-    if (imageData) { const match = String(imageData).match(/^data:image\/(jpeg|png|webp|gif);base64,([A-Za-z0-9+/=]+)$/); if (!match) return res.status(422).json({ message: 'Upload a JPG, PNG, WebP, or GIF image.' }); const extension = match[1] === 'jpeg' ? 'jpg' : match[1]; const fileName = `${crypto.randomUUID()}.${extension}`; fs.writeFileSync(path.join(uploadsDirectory, fileName), Buffer.from(match[2], 'base64')); imagePath = `/uploads/${fileName}`; }
+    if (imageData) imagePath = await saveProductImage(imageData);
     const result = await db.query('UPDATE products SET stock_quantity = COALESCE($1, stock_quantity), price_pesos = COALESCE($2, price_pesos), name = COALESCE($3, name), category = COALESCE($4, category), description = COALESCE($5, description), image_url = COALESCE($6, image_url), updated_at = NOW() WHERE id = $7 RETURNING id, name, category, price_pesos AS price, stock_quantity AS stock, rating, badge, image_url AS image', [stock === undefined ? null : Number(stock), price === undefined ? null : Number(price), name || null, category || null, description || null, imagePath, req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ message: 'Product not found.' });
     res.json({ success: true, product: result.rows[0] });
-  } catch { res.status(500).json({ message: 'Could not update this product.' }); }
+  } catch (error) { res.status(error.status || 500).json({ message: error.status ? error.message : 'Could not update this product.' }); }
 });
 
 app.delete('/api/admin/products/:id', async (req, res) => {
@@ -337,11 +331,7 @@ app.delete('/api/admin/products/:id', async (req, res) => {
 
     const deleted = await db.query('DELETE FROM products WHERE id = $1 RETURNING id, name, image_url', [req.params.id]);
     if (!deleted.rows[0]) return res.status(404).json({ message: 'Product not found.' });
-    const imagePath = deleted.rows[0].image_url;
-    if (imagePath?.startsWith('/uploads/')) {
-      const filePath = path.join(uploadsDirectory, path.basename(imagePath));
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
+    try { await removeProductImage(deleted.rows[0].image_url); } catch { /* the product is already deleted; a stale image can be cleaned up later */ }
     res.json({ success: true, message: `${deleted.rows[0].name} was permanently deleted.` });
   } catch { res.status(500).json({ message: 'Could not delete this product.' }); }
 });

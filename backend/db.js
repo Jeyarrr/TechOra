@@ -19,7 +19,15 @@ function getPool() {
     let Pool;
     try { ({ Pool } = require('pg')); }
     catch { throw new Error('PostgreSQL support is not installed. Run npm install.'); }
-    pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    // Serverless hosts can create several app instances at once. Keep each one
+    // to one reusable database connection so it works safely with Supabase's
+    // transaction pooler as well as the local PostgreSQL database.
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: Number(process.env.PG_POOL_MAX || 1),
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 10000
+    });
   }
   return pool;
 }
