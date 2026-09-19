@@ -7,7 +7,6 @@ import AdminPanel from './AdminPanel';
 import { money, categories } from './lib';
 
 export default function App() {
-  const isDemo = import.meta.env.VITE_DEMO === 'true';
   const [products, setProducts] = useState([]); const [category, setCategory] = useState('All'); const [sort, setSort] = useState(''); const [catalogVersion, setCatalogVersion] = useState(0); const [search, setSearch] = useState(''); const [catalogLoading, setCatalogLoading] = useState(true); const [catalogError, setCatalogError] = useState('');
   const filteredProducts = products.filter((product) => (product.name + ' ' + product.category).toLowerCase().includes(search.toLowerCase()));
   const [cart, setCart] = useState(() => {
@@ -53,7 +52,7 @@ export default function App() {
   return <><a className="skip-link" href="#shop">Skip to products</a>
     {user?.role === 'ADMIN' && <AdminPanel user={user} close={signOut} />}
     {user?.role !== 'ADMIN' && <BackToTop />}
-    <div className="announcement">{isDemo ? <>Public browser demo <span>•</span> Changes are saved on this device only</> : <>Technology for every day <span>•</span> Prices in Philippine pesos</>}</div>
+    <div className="announcement">Technology for every day <span>•</span> Prices in Philippine pesos</div>
     <StoreHeader user={user} cartCount={cartCount} go={go} profile={() => setProfileOpen(true)} orders={() => setOrdersOpen(true)} signOut={signOut} signIn={() => setAuth('login')} openBag={() => setDrawer(true)} />
     <main id="top">
       <section className="hero">
