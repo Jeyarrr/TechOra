@@ -118,7 +118,10 @@ app.get('/api/products', async (req, res) => {
     try {
       const result = await db.query(`SELECT id, name, category, price_pesos AS price, stock_quantity AS stock, rating, review_count AS reviews, badge, image_url AS image, description FROM products ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY ${ordering}`, values);
       return res.json(result.rows);
-    } catch { return res.status(500).json({ error: 'Could not load products from the database.' }); }
+    } catch (error) {
+      console.error('Could not load products from the database:', error.message);
+      return res.status(500).json({ error: 'Could not load products from the database.' });
+    }
   }
   let result = [...products];
   if (category && category !== 'All') result = result.filter(p => p.category === category);

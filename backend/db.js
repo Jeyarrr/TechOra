@@ -22,11 +22,15 @@ function getPool() {
     // Serverless hosts can create several app instances at once. Keep each one
     // to one reusable database connection so it works safely with Supabase's
     // transaction pooler as well as the local PostgreSQL database.
+    const connectionString = process.env.DATABASE_URL;
+    const usesSupabase = /(?:\.supabase\.co|\.pooler\.supabase\.com)/i.test(connectionString);
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       max: Number(process.env.PG_POOL_MAX || 1),
       idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 10000
+      connectionTimeoutMillis: 10000,
+      // Supabase pooler endpoints require TLS. Keep local PostgreSQL unchanged.
+      ...(usesSupabase ? { ssl: { rejectUnauthorized: false } } : {})
     });
   }
   return pool;
