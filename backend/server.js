@@ -9,7 +9,8 @@ const { uploadsDirectory, saveProductImage, removeProductImage } = require('./im
 const app = express();
 const orders = [];
 const users = [];
-fs.mkdirSync(uploadsDirectory, { recursive: true });
+// Local uploads create their directory when saved; API startup must not write
+// to the application filesystem because Vercel may not allow it.
 app.use(express.json({ limit: '6mb' }));
 app.use('/uploads', express.static(uploadsDirectory));
 const clientBuild = path.join(__dirname, '..', 'frontend', 'dist');
