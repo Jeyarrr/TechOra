@@ -20,7 +20,7 @@ export function AuthModal({ mode, close, success, switchMode }) {
       const raw = await response.text();
       let result;
       try { result = JSON.parse(raw); }
-      catch { throw new Error(`The server returned an invalid response (${response.status}). Restart the backend and try again.`); }
+      catch { throw new Error(`Account service is unavailable (${response.status}). Please try again later.`); }
       if (!response.ok) throw new Error(result.message || 'Something went wrong.');
       if (!signingUp) { if (remember) localStorage.setItem('techora-remembered-email', login.email); else localStorage.removeItem('techora-remembered-email'); } localStorage.setItem('techora-user', JSON.stringify(result.user)); success(result.user); close();
     } catch (requestError) { setError(requestError.message); } finally { setSaving(false); }
