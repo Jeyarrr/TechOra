@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "seed:admin": "node database/seed-admin.js",
     "seed:catalog": "node database/seed-expanded-catalog.js",
-    "test": "node backend/server.test.js",
+    "test": "node --test backend/server.test.js backend/images.test.js",
     "test:ui": "node scripts/ui-smoke.cjs"
   },
   "keywords": [],
