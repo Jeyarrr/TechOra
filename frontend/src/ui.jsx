@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import brandLogo from '../../Images/LOGO.png';
+
+export function BrandLogo() {
+  return <img className="brand-logo" src={brandLogo} alt="TechOra" width="156" height="52" />;
+}
 
 // A single, consistent 24px outline icon set for the whole interface.
 export function Icon({ name, size = 20, ...props }) {

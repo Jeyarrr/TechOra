@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Icon, ProductImage } from './ui';
+import { BrandLogo, Icon, ProductImage } from './ui';
 
 export function StoreHeader({ user, cartCount, go, profile, orders, signOut, signIn, openBag }) {
   const [open, setOpen] = useState(false);
@@ -18,7 +18,7 @@ export function StoreHeader({ user, cartCount, go, profile, orders, signOut, sig
   }, [open]);
   function run(action) { setOpen(false); action(); }
   return <header className="site-header">
-    <button className="logo" onClick={() => go('top')} aria-label="Techora home">TECH<span>ORA</span></button>
+    <button className="logo" onClick={() => go('top')} aria-label="TechOra home"><BrandLogo /></button>
     <nav aria-label="Store navigation"><button onClick={() => go('top')}>Home</button><button onClick={() => go('shop')}>Products</button><button onClick={() => go('shop')}>Categories</button><button onClick={() => go('why')}>Why Techora</button></nav>
     <div className="actions">
       {user ? <><div className="customer-text-links"><button onClick={profile}>Profile</button><button onClick={orders}>Orders</button></div><button className="sign-out" onClick={signOut}>Sign out</button></> : <button className="round" onClick={signIn}>Sign in</button>}

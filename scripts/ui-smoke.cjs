@@ -50,8 +50,8 @@ const server = http.createServer(async (req, res) => {
     }
     return json({ message: 'Unexpected fixture endpoint' }, 404);
   }
-  const file = url.pathname === '/main.js' || url.pathname === '/main.css' ? path.join(out, url.pathname.slice(1)) : url.pathname === '/product-fallback.svg' ? path.join(root, 'frontend/public/product-fallback.svg') : null;
-  if (file) { res.setHeader('Content-Type', file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'image/svg+xml'); return fs.createReadStream(file).pipe(res); }
+  const file = url.pathname === '/main.js' || url.pathname === '/main.css' ? path.join(out, url.pathname.slice(1)) : url.pathname === '/product-fallback.svg' ? path.join(root, 'frontend/public/product-fallback.svg') : url.pathname.startsWith('/assets/') ? path.join(out, 'assets', path.basename(url.pathname)) : null;
+  if (file) { res.setHeader('Content-Type', file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.png') ? 'image/png' : 'image/svg+xml'); return fs.createReadStream(file).pipe(res); }
   res.setHeader('Content-Type', 'text/html');
   res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/main.css"></head><body><div id="root"></div><script src="/main.js"></script></body></html>');
 });
@@ -62,7 +62,7 @@ let chromeProcess;
 async function run() {
   fs.mkdirSync(out, { recursive: true });
   const esbuild = process.platform === 'win32' ? path.join(root, 'node_modules/@esbuild/win32-x64/esbuild.exe') : path.join(root, 'node_modules/esbuild/bin/esbuild');
-  execFileSync(esbuild, ['frontend/src/main.jsx', '--bundle', '--jsx=automatic', '--outfile=.cache/ui-preview/main.js', '--loader:.css=css', '--define:process.env.NODE_ENV="development"'], { cwd: root, stdio: 'inherit', windowsHide: true });
+  execFileSync(esbuild, ['frontend/src/main.jsx', '--bundle', '--jsx=automatic', '--outfile=.cache/ui-preview/main.js', '--loader:.css=css', '--loader:.png=file', '--asset-names=assets/[name]-[hash]', '--define:process.env.NODE_ENV="development"'], { cwd: root, stdio: 'inherit', windowsHide: true });
   const candidates = [process.env.TECHORA_CHROME_PATH, 'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].filter(Boolean);
   const executable = candidates.find(file => fs.existsSync(file));
   if (!executable) throw Error('No Chrome/Edge executable found. Set TECHORA_CHROME_PATH.');
@@ -93,7 +93,7 @@ async function run() {
   const evaluate = async (expression) => { const result = await cdp('Runtime.evaluate',{ expression, returnByValue:true, awaitPromise:true }); if(result.exceptionDetails) throw Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text); return result.result.value; };
   const pause = (ms = 150) => new Promise(resolve => setTimeout(resolve,ms));
   async function waitFor(expression) { for(let i=0;i<60;i++){ if(await evaluate(expression)) return; await pause(100); } throw Error('Timeout: '+expression); }
-  const click = async selector => { await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`); await pause(); };
+  const click = async selector => { await evaluate(`(()=>{const element=document.querySelector(${JSON.stringify(selector)});element.focus();element.click();})()`); await pause(); };
   const clickText = async (scope,text) => { await evaluate(`[...document.querySelectorAll(${JSON.stringify(scope)})].find(el => el.textContent.trim() === ${JSON.stringify(text)}).click()`); await pause(); };
   async function input(selector,value) { await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const p=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await pause(); }
   async function session(account) { await evaluate(`localStorage.setItem('techora-user',${JSON.stringify(JSON.stringify(account))});localStorage.removeItem('techora-admin-section-test-admin');location.reload()`); await waitFor(account?.role === 'ADMIN' ? "!!document.querySelector('.insight-open')" : "!!document.querySelector('.card')"); }

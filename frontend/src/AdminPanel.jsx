@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Icon, Modal, Field, SearchField, LoadingState, EmptyState, ProductImage, BackToTop, useNotification } from './ui';
+import { BrandLogo, Icon, Modal, Field, SearchField, LoadingState, EmptyState, ProductImage, BackToTop, useNotification } from './ui';
 import { Pagination } from './components';
 import { money, categories, readResponse } from './lib';
 
@@ -141,7 +141,7 @@ export default function AdminPanel({ user, close }) {
     <div className="admin-shell">
       {adminMenu && <button className="admin-menu-backdrop" aria-label="Close admin navigation" onClick={() => setAdminMenu(false)} />}
       <aside className={`admin-sidebar ${adminMenu ? 'menu-open' : ''}`} aria-label="Administration">
-        <div className="admin-brand"><button className="admin-menu-toggle" aria-label={adminMenu ? 'Close admin navigation' : 'Open admin navigation'} aria-expanded={adminMenu} aria-controls="admin-navigation" onClick={() => setAdminMenu(!adminMenu)}><Icon name={adminMenu ? 'close' : 'menu'} /></button><button className="logo" onClick={close} aria-label="Return to storefront">TECH<span>ORA</span></button></div>
+        <div className="admin-brand"><button className="admin-menu-toggle" aria-label={adminMenu ? 'Close admin navigation' : 'Open admin navigation'} aria-expanded={adminMenu} aria-controls="admin-navigation" onClick={() => setAdminMenu(!adminMenu)}><Icon name={adminMenu ? 'close' : 'menu'} /></button><button className="logo" onClick={close} aria-label="Return to storefront"><BrandLogo /></button></div>
         <div className="admin-navigation" id="admin-navigation"><p>Workspace</p>{modules.map((item) => <button className={section === item.id ? 'active' : ''} aria-current={section === item.id ? 'page' : undefined} onClick={() => selectSection(item.id)} key={item.id}><span className="admin-nav-icon"><AdminNavIcon name={item.icon} /></span>{item.label}</button>)}
           <div className="admin-user"><span>Signed in as</span><strong>{user.firstName} {user.lastName}</strong><small>{user.email}</small></div>
           <button className="exit-admin" onClick={close}><Icon name="logout" size={17} />Sign out / storefront</button>
