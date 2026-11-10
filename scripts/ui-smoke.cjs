@@ -174,7 +174,12 @@ async function run() {
   for (const width of [375, 1440]) {
     await viewport(width);
     await evaluate("document.querySelector('.pagination').scrollIntoView({block:'end',behavior:'instant'})"); await pause();
-    assert(await evaluate("(()=>{const b=document.querySelector('.pagination button:last-child');const r=b.getBoundingClientRect();return !b.disabled && b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})()"), 'Next is visible and unobstructed at '+width);
+    const nextVisible = await evaluate("(()=>{const b=document.querySelector('.pagination button:last-child');const r=b.getBoundingClientRect();return !b.disabled && b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})()");
+    if (!nextVisible) {
+      await screenshot('pagination-obstruction');
+      console.log('Pagination hit test:', await evaluate("(()=>{const b=document.querySelector('.pagination button:last-child');const r=b.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {button:r.toJSON(),hit:hit?.outerHTML.slice(0,500),scrollTop:document.querySelector('.admin-main').scrollTop};})()"));
+    }
+    assert(nextVisible, 'Next is visible and unobstructed at '+width);
     await click('.pagination button:last-child');
     assert(await evaluate("document.querySelector('.pagination').textContent.includes('Page 2 of 2')"));
     await click('.pagination button:first-child');
